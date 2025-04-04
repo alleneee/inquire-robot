@@ -81,12 +81,18 @@ export default function AIAssistantButton() {
         
         // 创建iframe
         const iframe = document.createElement('iframe');
-        iframe.src = 'http://115.190.43.2/chat/KOKgh8ipArE9qYEY?hide_sidebar=true';
+        // 使用相对协议，自动匹配网站的协议（HTTP或HTTPS）
+        iframe.src = '//115.190.43.2/chat/KOKgh8ipArE9qYEY?hide_sidebar=true';
         iframe.style.cssText = `
           width: 100%;
           height: calc(100% - 48px);
           border: none;
         `;
+        // 添加允许跨域属性
+        iframe.setAttribute('allow', 'fullscreen');
+        iframe.setAttribute('allowfullscreen', 'true');
+        iframe.setAttribute('referrerpolicy', 'no-referrer');
+        iframe.setAttribute('loading', 'lazy');
         chatContainer.appendChild(iframe);
         
         document.body.appendChild(chatContainer);
