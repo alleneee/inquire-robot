@@ -26,18 +26,11 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // 使用环境变量，如果不存在则使用默认值
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'anon-key'}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
+      // 导入sendEmail服务
+      const { sendEmail } = await import('@/services/email-service');
+      const result = await sendEmail(formData);
+      
+      if (!result.success) {
         throw new Error('发送失败');
       }
 
