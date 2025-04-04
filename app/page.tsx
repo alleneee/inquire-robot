@@ -87,7 +87,7 @@ export default function Home() {
     }
   ];
 
-  const processSteps = [
+  const serviceSteps = [
     {
       icon: <MessageSquare className="w-8 h-8" />,
       title: "需求沟通",
@@ -198,7 +198,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-16">合作流程</h2>
           <div className="grid md:grid-cols-4 gap-8">
-            {processSteps.map((step, index) => (
+            {serviceSteps.map((step, index) => (
               <div key={index} className="flex flex-col items-center text-center">
                 <div className="w-16 h-16 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center mb-4 shadow-md">
                   {step.icon}
