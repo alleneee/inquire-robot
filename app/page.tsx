@@ -161,8 +161,8 @@ export default function Home() {
               <Button size="lg" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" onClick={() => document.getElementById('consultation-form')?.scrollIntoView({ behavior: 'smooth' })}>
                 预约咨询
               </Button>
-              <Button variant="secondary" size="lg" className="bg-black text-white hover:bg-black/80">
-                了解更多
+              <Button variant="secondary" size="lg" className="bg-black text-white hover:bg-black/80" onClick={() => window.open('https://data-vista-command.lovable.app/', '_blank', 'noopener,noreferrer')}>
+                查看Demo
               </Button>
               <AIAssistantButton />
             </div>
@@ -246,7 +246,16 @@ export default function Home() {
       {/* Consultation Form Section */}
       <section id="consultation-form" className="py-20 bg-gradient-to-b from-white to-blue-50">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-16">预约咨询</h2>
+          <h2 className="text-3xl font-bold text-center mb-4">预约咨询</h2>
+          <div className="text-center mb-12">
+            <p className="text-lg">
+              <span className="font-medium">联系电话: </span>
+              <a href="tel:18621042158" className="text-blue-600 hover:underline">18621042158</a>
+              <span className="mx-3">|</span>
+              <span className="font-medium">联系邮箱: </span>
+              <a href="mailto:herchejane@gmail.com" className="text-blue-600 hover:underline">herchejane@gmail.com</a>
+            </p>
+          </div>
           <div className="max-w-2xl mx-auto">
             <Card className="p-6 bg-white/80 backdrop-blur-sm">
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -328,6 +337,7 @@ export default function Home() {
               <Link href="#process" className="text-sm font-medium hover:text-primary">服务流程</Link>
               <Link href="#cases" className="text-sm font-medium hover:text-primary">成功案例</Link>
               <Link href="#consultation-form" className="text-sm font-medium hover:text-primary">联系我们</Link>
+              <a href="https://data-vista-command.lovable.app/" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:text-blue-800">了解更多</a>
             </div>
             <Button
               onClick={() => document.getElementById('consultation-form')?.scrollIntoView({ behavior: 'smooth' })}
