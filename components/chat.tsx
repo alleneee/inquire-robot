@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
-import { DifyClient } from 'dify-client';
+import { ChatClient } from 'dify-client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -13,16 +13,22 @@ interface Message {
 }
 
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    // 添加初始欢迎消息
+    {
+      role: 'assistant',
+      content: "您好！我是AI助手，有什么可以帮助您的？"
+    }
+  ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // 初始化Dify客户端
-  const difyClient = new DifyClient({
-    apiKey: 'YOUR_API_KEY', // 替换为您的Dify API密钥
-    baseURL: 'http://192.168.3.9' // 或者您的Dify服务URL
-  });
+  const difyClient = new ChatClient(
+    process.env.NEXT_PUBLIC_DIFY_API_KEY || '',
+    process.env.NEXT_PUBLIC_DIFY_BASE_URL || ''
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,13 +49,13 @@ export default function Chat() {
 
     try {
       // 使用Dify客户端发送消息
-      const chatResponse = await difyClient.createChatMessage({
-        inputs: {}, // 可选的输入参数
-        query: userMessage,
-        response_mode: "blocking",
-        conversation_id: "7qSR13dEgdqQXKRB", // 可选，如不提供则创建新会话
-        user: "web-user"
-      });
+      const chatResponse = await difyClient.createChatMessage(
+        {}, // inputs: 可选的输入参数
+        userMessage, // query
+        "web-user", // user
+        false, // stream
+        null // conversation_id
+      );
 
       if (chatResponse.answer) {
         setMessages(prev => [...prev, { role: 'assistant', content: chatResponse.answer }]);

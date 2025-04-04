@@ -8,8 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Bot, Brain, ChartBar, Clock, Code2, Database, FileCheck, MessageSquare, Notebook, Shield, Target, Users, Zap } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import ChatDialog from "@/components/chat-dialog";
-import DifyChat from "@/components/dify-chat";
+import AIAssistantButton from "@/components/ai-assistant-button";
 
 export default function Home() {
   const { toast } = useToast();
@@ -27,11 +26,13 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`, {
+      // 使用环境变量，如果不存在则使用默认值
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'anon-key'}`,
         },
         body: JSON.stringify(formData),
       });
@@ -86,7 +87,7 @@ export default function Home() {
     }
   ];
 
-  const process = [
+  const processSteps = [
     {
       icon: <MessageSquare className="w-8 h-8" />,
       title: "需求沟通",
@@ -170,7 +171,7 @@ export default function Home() {
               <Button variant="secondary" size="lg" className="bg-black text-white hover:bg-black/80">
                 了解更多
               </Button>
-              <ChatDialog />
+              <AIAssistantButton />
             </div>
           </div>
         </div>
@@ -197,7 +198,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-16">合作流程</h2>
           <div className="grid md:grid-cols-4 gap-8">
-            {process.map((step, index) => (
+            {processSteps.map((step, index) => (
               <div key={index} className="flex flex-col items-center text-center">
                 <div className="w-16 h-16 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center mb-4 shadow-md">
                   {step.icon}
@@ -342,10 +343,7 @@ export default function Home() {
               获取方案
             </Button>
           </div>
-          {/* 添加Dify聊天组件 - 这里我们隐藏显示Card但保留渲染，这样脚本会加载且显示聊天气泡 */}
-          <div className="hidden">
-            <DifyChat />
-          </div>
+          {/* 移除全局AI聊天组件，改为使用按钮触发 */}
         </div>
         {/* Hidden SEO Keywords */}
         <div className="hidden">
