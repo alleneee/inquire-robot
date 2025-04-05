@@ -12,6 +12,7 @@ export interface IOnDataMoreInfo {
   files?: string[];
   isComplete?: boolean; // 标记是否是完整消息
   errorMessage?: string; // 错误消息
+  taskId?: string; // 任务ID，用于停止响应
   debugInfo?: {
     currentText?: string;
     accumulatedLength?: number;
@@ -47,6 +48,7 @@ const handleStream = (
   let messageContent = ''; // 完整消息内容
   let messageId = ''; // 消息ID
   let conversationId = ''; // 对话ID
+  let taskId = ''; // 任务ID，用于停止响应
 
   console.log('开始流式处理...');
 
@@ -60,7 +62,8 @@ const handleStream = (
             conversationId,
             messageId,
             eventType: 'message',
-            isComplete: true
+            isComplete: true,
+            taskId
           });
         }
         console.log('流处理完成，调用onCompleted');
@@ -86,7 +89,8 @@ const handleStream = (
                   conversationId,
                   messageId,
                   eventType: 'message',
-                  isComplete: true
+                  isComplete: true,
+                  taskId
                 });
               }
               console.log('收到[DONE]标记，调用onCompleted');
@@ -100,6 +104,12 @@ const handleStream = (
               // 记录对话ID
               if (parsedData.conversation_id) {
                 conversationId = parsedData.conversation_id;
+              }
+
+              // 提取任务ID
+              if (parsedData.task_id && !taskId) {
+                taskId = parsedData.task_id;
+                console.log('提取到任务ID:', taskId);
               }
 
               // 处理不同的事件类型
@@ -125,6 +135,7 @@ const handleStream = (
                     messageId,
                     eventType: parsedData.event,
                     isComplete: false, // 流式传输中的消息，尚未完成
+                    taskId, // 添加任务ID
                     // 调试信息
                     debugInfo: {
                       currentText: text,
@@ -152,7 +163,8 @@ const handleStream = (
                       observation: parsedData.observation || '',
                       tool: parsedData.tool || '',
                       toolInput: parsedData.tool_input || '',
-                      files: parsedData.message_files || []
+                      files: parsedData.message_files || [],
+                      taskId
                     }
                   );
 
@@ -183,7 +195,8 @@ const handleStream = (
                       conversationId: parsedData.conversation_id,
                       messageId: parsedData.id || '',
                       eventType: 'message_file',
-                      files: [parsedData.id]
+                      files: [parsedData.id],
+                      taskId
                     }
                   );
                   if (isFirstMessage) {
@@ -216,6 +229,7 @@ const handleStream = (
                         messageId: parsedData.message_id || messageId || '',
                         eventType: 'message_end',
                         isComplete: true, // 标记消息已完成
+                        taskId,
                         debugInfo: {
                           finalLength: messageContent.length,
                           timestamp: new Date().toISOString(),
@@ -239,7 +253,8 @@ const handleStream = (
                     {
                       conversationId: parsedData.conversation_id,
                       messageId: parsedData.message_id || '',
-                      errorMessage: parsedData.message || '未知错误'
+                      errorMessage: parsedData.message || '未知错误',
+                      taskId
                     }
                   );
                   onCompleted && onCompleted();
@@ -434,5 +449,155 @@ export const fetchConversationHistory = async (conversationId: string) => {
   } catch (e) {
     console.error('获取对话历史出错:', e);
     throw e;
+  }
+};
+
+/**
+ * 停止正在进行的消息响应
+ * @param taskId 任务ID，在流式响应中获取
+ * @param user 用户标识，必须与发送消息时保持一致
+ * @returns 成功返回{result: "success"}
+ */
+export const stopChatMessage = async (taskId: string, user: string): Promise<{ result: string }> => {
+  if (!taskId) {
+    throw new Error('任务ID不能为空');
+  }
+
+  const apiKey = process.env.NEXT_PUBLIC_DIFY_API_KEY;
+  const baseUrl = process.env.NEXT_PUBLIC_DIFY_BASE_URL;
+
+  if (!apiKey || !baseUrl) {
+    throw new Error('API配置缺失: 请检查环境变量');
+  }
+
+  const isClient = typeof window !== 'undefined';
+  let useUrl = `${baseUrl}/v1/chat-messages/${taskId}/stop`;
+
+  // 在浏览器端使用代理
+  if (isClient) {
+    const targetUrl = encodeURIComponent(useUrl);
+    useUrl = `/api/proxy?url=${targetUrl}`;
+    console.log('使用代理URL停止响应:', useUrl);
+  }
+
+  try {
+    console.log(`停止消息响应 (任务ID: ${taskId}, 用户: ${user})`);
+
+    // 创建一个超时控制器，60秒超时
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 60000);
+
+    const response = await fetch(useUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({ user }),
+      signal: timeoutController.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('停止响应失败:', response.status, errorText);
+      throw new Error(`停止响应失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('停止响应成功:', data);
+    return data;
+
+  } catch (error) {
+    const err = error as Error;
+    console.error('停止响应出错:', err.message);
+
+    // 分类错误类型，提供更明确的错误信息
+    let errorMessage = '停止响应失败';
+
+    if (err.name === 'AbortError') {
+      errorMessage = '停止响应超时';
+    } else if (err.message.includes('fetch')) {
+      errorMessage = 'API连接失败';
+    }
+
+    throw new Error(`${errorMessage}: ${err.message}`);
+  }
+};
+
+/**
+ * 获取下一轮建议问题列表
+ * @param messageId 消息ID
+ * @param user 用户标识
+ * @returns 成功返回建议问题列表
+ */
+export const fetchSuggestedQuestions = async (
+  messageId: string,
+  user: string
+): Promise<{ result: string, data: string[] }> => {
+  if (!messageId) {
+    throw new Error('消息ID不能为空');
+  }
+
+  const apiKey = process.env.NEXT_PUBLIC_DIFY_API_KEY;
+  const baseUrl = process.env.NEXT_PUBLIC_DIFY_BASE_URL;
+
+  if (!apiKey || !baseUrl) {
+    throw new Error('API配置缺失: 请检查环境变量');
+  }
+
+  const isClient = typeof window !== 'undefined';
+  let useUrl = `${baseUrl}/v1/messages/${messageId}/suggested?user=${encodeURIComponent(user)}`;
+
+  // 在浏览器端使用代理
+  if (isClient) {
+    const targetUrl = encodeURIComponent(useUrl);
+    useUrl = `/api/proxy?url=${targetUrl}`;
+    console.log('使用代理URL获取建议问题:', useUrl);
+  }
+
+  try {
+    console.log(`获取建议问题 (消息ID: ${messageId}, 用户: ${user})`);
+
+    // 创建一个超时控制器，30秒超时
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 30000);
+
+    const response = await fetch(useUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      signal: timeoutController.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('获取建议问题失败:', response.status, errorText);
+      throw new Error(`获取建议问题失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('获取建议问题成功:', data);
+    return data;
+
+  } catch (error) {
+    const err = error as Error;
+    console.error('获取建议问题出错:', err.message);
+
+    // 分类错误类型，提供更明确的错误信息
+    let errorMessage = '获取建议问题失败';
+
+    if (err.name === 'AbortError') {
+      errorMessage = '获取建议问题超时';
+    } else if (err.message.includes('fetch')) {
+      errorMessage = 'API连接失败';
+    }
+
+    throw new Error(`${errorMessage}: ${err.message}`);
   }
 };

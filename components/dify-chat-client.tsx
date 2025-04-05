@@ -4,9 +4,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Send, StopCircle, Lightbulb } from "lucide-react";
 import { DEFAULT_USER } from '@/config';
-import { sendChatMessage, IOnDataMoreInfo } from '@/services/dify-service';
+import {
+  sendChatMessage,
+  stopChatMessage,
+  fetchSuggestedQuestions,
+  IOnDataMoreInfo
+} from '@/services/dify-service';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type MessageType = 'text' | 'thought' | 'file';
 
@@ -26,11 +33,78 @@ interface Message {
 
 export default function DifyChatClient(): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string>('');
   const [currentAssistantMessageId, setCurrentAssistantMessageId] = useState<string>('');
+  const [currentTaskId, setCurrentTaskId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 获取Dify的开场白
+  useEffect(() => {
+    const fetchDifyGreeting = async () => {
+      setIsLoading(true);
+      try {
+        console.log('获取Dify开场白...');
+        // 发送空消息来获取开场白
+        await sendChatMessage(
+          {
+            query: "", // 空查询以获取开场白
+            inputs: {},
+            user: DEFAULT_USER || 'web-user',
+          },
+          {
+            onData: (message: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
+              if (message && message.trim()) {
+                console.log('收到Dify开场白:', message);
+                // 使用来自Dify的开场白
+                setMessages([{
+                  role: 'assistant',
+                  content: message,
+                  type: 'text',
+                  id: moreInfo.messageId || `assistant-${Date.now()}`
+                }]);
+              }
+
+              // 保存对话ID
+              if (moreInfo.conversationId) {
+                console.log('设置会话ID:', moreInfo.conversationId);
+                setCurrentConversationId(moreInfo.conversationId);
+              }
+            },
+            onCompleted: () => {
+              setIsLoading(false);
+            },
+            onError: (errorMsg) => {
+              console.error('获取开场白失败:', errorMsg);
+              // 如果获取失败，使用默认开场白
+              setMessages([{
+                role: 'assistant',
+                content: "欢迎使用AI助手，有什么可以帮助您的？",
+                type: 'text',
+                id: `assistant-${Date.now()}`
+              }]);
+              setIsLoading(false);
+            }
+          }
+        );
+      } catch (error) {
+        console.error('获取开场白请求失败:', error);
+        // 如果请求失败，使用默认开场白
+        setMessages([{
+          role: 'assistant',
+          content: "欢迎使用AI助手，有什么可以帮助您的？",
+          type: 'text',
+          id: `assistant-${Date.now()}`
+        }]);
+        setIsLoading(false);
+      }
+    };
+
+    // 组件加载时获取开场白
+    fetchDifyGreeting();
+  }, []);
 
   // 调试日志：渲染时输出消息状态
   useEffect(() => {
@@ -53,6 +127,71 @@ export default function DifyChatClient(): JSX.Element {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // 添加停止响应的处理函数
+  const handleStopResponse = async () => {
+    if (!currentTaskId) {
+      console.warn('没有可停止的任务ID');
+      return;
+    }
+
+    try {
+      console.log('停止响应，任务ID:', currentTaskId);
+      await stopChatMessage(currentTaskId, DEFAULT_USER || 'web-user');
+      console.log('成功停止响应');
+
+      // 更新UI状态
+      setIsLoading(false);
+
+      // 在消息末尾添加停止提示
+      setMessages(prev => {
+        const lastMessageIndex = prev.findIndex(msg => msg.id === currentAssistantMessageId);
+        if (lastMessageIndex !== -1) {
+          const updatedMessages = [...prev];
+          updatedMessages[lastMessageIndex] = {
+            ...updatedMessages[lastMessageIndex],
+            content: updatedMessages[lastMessageIndex].content + ' [已停止]'
+          };
+          return updatedMessages;
+        }
+        return prev;
+      });
+    } catch (error) {
+      console.error('停止响应失败:', error);
+      // 尝试强制更新状态
+      setIsLoading(false);
+    }
+  };
+
+  // 处理建议问题点击
+  const handleSuggestedQuestionClick = (question: string) => {
+    setInput(question);
+    setSuggestedQuestions([]); // 清空建议问题列表
+  };
+
+  // 获取建议问题
+  const fetchSuggestions = async (messageId: string) => {
+    if (!messageId) {
+      console.log('没有消息ID，无法获取建议问题');
+      return;
+    }
+
+    try {
+      console.log('获取建议问题，消息ID:', messageId);
+      const response = await fetchSuggestedQuestions(messageId, DEFAULT_USER || 'web-user');
+
+      if (response.result === 'success' && Array.isArray(response.data)) {
+        console.log('获取到建议问题:', response.data);
+        setSuggestedQuestions(response.data);
+      } else {
+        console.warn('建议问题格式不正确:', response);
+        setSuggestedQuestions([]);
+      }
+    } catch (error) {
+      console.error('获取建议问题失败:', error);
+      setSuggestedQuestions([]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +267,12 @@ export default function DifyChatClient(): JSX.Element {
             if (moreInfo.conversationId) {
               console.log('设置会话ID:', moreInfo.conversationId);
               setCurrentConversationId(moreInfo.conversationId);
+            }
+
+            // 保存任务ID，用于停止响应
+            if (moreInfo.taskId) {
+              console.log('设置任务ID:', moreInfo.taskId);
+              setCurrentTaskId(moreInfo.taskId);
             }
 
             // 获取事件类型
@@ -294,6 +439,13 @@ export default function DifyChatClient(): JSX.Element {
                   }
                   return prev;
                 });
+
+                // 消息结束后，如果有消息ID，获取建议问题
+                if (moreInfo.messageId) {
+                  setTimeout(() => {
+                    fetchSuggestions(moreInfo.messageId || '');
+                  }, 500); // 稍微延迟一下，确保服务器处理完毕
+                }
 
                 // 消息结束后，确保重置加载状态
                 setIsLoading(false);
@@ -490,10 +642,41 @@ export default function DifyChatClient(): JSX.Element {
                       )}
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap">
-                      {msg.content && msg.content.length > 0 ?
-                        (msg.content) :
-                        (isLoading && msg.role === 'assistant' ? '加载中...' : '无内容')}
+                    <div className="markdown-content">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          // 自定义渲染组件
+                          h1: ({ node, ...props }) => <h1 className="text-xl font-bold my-2" {...props} />,
+                          h2: ({ node, ...props }) => <h2 className="text-lg font-bold my-2" {...props} />,
+                          h3: ({ node, ...props }) => <h3 className="text-md font-bold my-1" {...props} />,
+                          p: ({ node, ...props }) => <p className="my-1" {...props} />,
+                          ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-1" {...props} />,
+                          ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-1" {...props} />,
+                          li: ({ node, ...props }) => <li className="my-0.5" {...props} />,
+                          a: ({ node, ...props }) => <a className="text-blue-600 underline hover:text-blue-800" {...props} />,
+                          code: ({ node, inline, className, children, ...props }: any) => {
+                            if (inline) {
+                              return (
+                                <code className="bg-gray-200 px-1 rounded text-sm" {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                            return (
+                              <pre className="bg-gray-800 text-white p-2 rounded text-sm whitespace-pre-wrap overflow-x-auto my-2">
+                                <code className={className} {...props}>{children}</code>
+                              </pre>
+                            );
+                          },
+                          blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-gray-300 pl-2 italic" {...props} />,
+                          table: ({ node, ...props }) => <table className="border-collapse border border-gray-300 my-2" {...props} />,
+                          th: ({ node, ...props }) => <th className="border border-gray-300 p-1 bg-gray-100" {...props} />,
+                          td: ({ node, ...props }) => <td className="border border-gray-300 p-1" {...props} />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
                   )}
                 </div>
@@ -531,6 +714,24 @@ export default function DifyChatClient(): JSX.Element {
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-gray-100">
+        {suggestedQuestions.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <div className="w-full flex items-center text-xs text-gray-500 mb-1">
+              <Lightbulb className="h-3 w-3 mr-1" />
+              <span>建议问题:</span>
+            </div>
+            {suggestedQuestions.map((question, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => handleSuggestedQuestionClick(question)}
+                className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors"
+              >
+                {question}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 items-center">
           <Input
             value={input}
@@ -539,13 +740,23 @@ export default function DifyChatClient(): JSX.Element {
             disabled={isLoading}
             className="rounded-full border-gray-200 focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
           />
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="rounded-full w-10 h-10 flex items-center justify-center bg-blue-600 hover:bg-blue-700 transition-colors"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          {isLoading ? (
+            <Button
+              type="button"
+              onClick={handleStopResponse}
+              className="rounded-full w-10 h-10 flex items-center justify-center bg-red-500 hover:bg-red-600 transition-colors"
+            >
+              <StopCircle className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="rounded-full w-10 h-10 flex items-center justify-center bg-blue-600 hover:bg-blue-700 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </form>
     </Card>

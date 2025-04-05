@@ -14,21 +14,50 @@ interface Message {
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([
-    // 添加初始欢迎消息
-    {
-      role: 'assistant',
-      content: "您好！我是AI助手，有什么可以帮助您的？"
-    }
+    // 不再添加硬编码的欢迎消息，而是等待Dify的开场白
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   // 初始化Dify客户端
   const difyClient = new ChatClient(
     process.env.NEXT_PUBLIC_DIFY_API_KEY || '',
     process.env.NEXT_PUBLIC_DIFY_BASE_URL || ''
   );
+
+  // 获取Dify的开场白
+  useEffect(() => {
+    const fetchDifyGreeting = async () => {
+      try {
+        // 发送空消息来获取开场白
+        const greetingResponse = await difyClient.createChatMessage(
+          {}, // inputs: 可选的输入参数
+          "", // 空查询以获取开场白
+          "web-user", // user
+          false, // stream
+          null // conversation_id
+        );
+
+        if (greetingResponse.answer) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: greetingResponse.answer
+          }]);
+        }
+      } catch (error) {
+        console.error('获取开场白失败:', error);
+        // 如果获取失败，使用默认开场白
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "欢迎使用AI助手，有什么可以帮助您的？"
+        }]);
+      }
+    };
+
+    // 只在组件加载时执行一次
+    fetchDifyGreeting();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,11 +105,10 @@ export default function Chat() {
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
-              }`}
+              className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-900'
+                }`}
             >
               {message.content}
             </div>
