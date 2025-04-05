@@ -14,6 +14,7 @@ import {
 } from '@/services/dify-service';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useToast } from "@/hooks/use-toast";
 
 type MessageType = 'text' | 'thought' | 'file';
 
@@ -40,6 +41,7 @@ export default function DifyChatClient(): JSX.Element {
   const [currentAssistantMessageId, setCurrentAssistantMessageId] = useState<string>('');
   const [currentTaskId, setCurrentTaskId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   // 获取Dify的开场白
   useEffect(() => {
@@ -128,6 +130,18 @@ export default function DifyChatClient(): JSX.Element {
     scrollToBottom();
   }, [messages]);
 
+  // 当首次加载或获取到第一条建议问题时，显示提示
+  useEffect(() => {
+    if (suggestedQuestions.length > 0 && !localStorage.getItem('suggested_questions_tip_shown')) {
+      toast({
+        title: "提示",
+        description: "AI会在每次回答后提供建议问题，点击即可继续对话",
+        duration: 5000,
+      });
+      localStorage.setItem('suggested_questions_tip_shown', 'true');
+    }
+  }, [suggestedQuestions]);
+
   // 添加停止响应的处理函数
   const handleStopResponse = async () => {
     if (!currentTaskId) {
@@ -156,6 +170,14 @@ export default function DifyChatClient(): JSX.Element {
         }
         return prev;
       });
+
+      // 停止响应后也尝试获取建议问题
+      if (currentAssistantMessageId) {
+        console.log('响应已停止，尝试获取建议问题');
+        setTimeout(() => {
+          fetchSuggestionsWithRetry(currentAssistantMessageId, 2);
+        }, 1000);
+      }
     } catch (error) {
       console.error('停止响应失败:', error);
       // 尝试强制更新状态
@@ -169,7 +191,7 @@ export default function DifyChatClient(): JSX.Element {
     setSuggestedQuestions([]); // 清空建议问题列表
   };
 
-  // 获取建议问题
+  // 获取建议问题的函数
   const fetchSuggestions = async (messageId: string) => {
     if (!messageId) {
       console.log('没有消息ID，无法获取建议问题');
@@ -190,6 +212,52 @@ export default function DifyChatClient(): JSX.Element {
     } catch (error) {
       console.error('获取建议问题失败:', error);
       setSuggestedQuestions([]);
+    }
+  };
+
+  // 强化后的获取建议问题函数，包含重试逻辑
+  const fetchSuggestionsWithRetry = async (messageId: string, retries = 2) => {
+    if (!messageId) {
+      console.log('没有有效的消息ID，跳过获取建议问题');
+      return;
+    }
+
+    console.log(`尝试获取建议问题 (消息ID: ${messageId}, 剩余重试次数: ${retries})`);
+
+    try {
+      const response = await fetchSuggestedQuestions(messageId, DEFAULT_USER || 'web-user');
+
+      if (response.result === 'success' && Array.isArray(response.data)) {
+        console.log(`成功获取到${response.data.length}个建议问题`);
+        if (response.data.length > 0) {
+          setSuggestedQuestions(response.data);
+        } else {
+          console.log('返回的建议问题为空数组');
+          setSuggestedQuestions([]);
+        }
+      } else {
+        console.warn('建议问题格式不正确或为空:', response);
+        setSuggestedQuestions([]);
+
+        // 如果还有重试次数，延迟后重试
+        if (retries > 0) {
+          console.log(`将在2秒后重试获取建议问题，剩余重试次数: ${retries - 1}`);
+          setTimeout(() => {
+            fetchSuggestionsWithRetry(messageId, retries - 1);
+          }, 2000);
+        }
+      }
+    } catch (error) {
+      console.error('获取建议问题失败:', error);
+      setSuggestedQuestions([]);
+
+      // 如果还有重试次数，延迟后重试
+      if (retries > 0) {
+        console.log(`获取失败，将在2秒后重试，剩余重试次数: ${retries - 1}`);
+        setTimeout(() => {
+          fetchSuggestionsWithRetry(messageId, retries - 1);
+        }, 2000);
+      }
     }
   };
 
@@ -440,11 +508,22 @@ export default function DifyChatClient(): JSX.Element {
                   return prev;
                 });
 
-                // 消息结束后，如果有消息ID，获取建议问题
+                // 消息结束后，获取建议问题
                 if (moreInfo.messageId) {
+                  console.log('消息结束，准备获取建议问题，messageId:', moreInfo.messageId);
+                  // 使用增强版的获取建议问题函数，带重试功能
                   setTimeout(() => {
-                    fetchSuggestions(moreInfo.messageId || '');
-                  }, 500); // 稍微延迟一下，确保服务器处理完毕
+                    fetchSuggestionsWithRetry(moreInfo.messageId || '', 2);
+                  }, 1000); // 稍微延迟1秒，确保服务器处理完毕
+                } else {
+                  console.warn('消息结束但没有消息ID，尝试使用currentAssistantMessageId获取建议问题');
+                  if (currentAssistantMessageId) {
+                    setTimeout(() => {
+                      fetchSuggestionsWithRetry(currentAssistantMessageId, 2);
+                    }, 1000);
+                  } else {
+                    console.error('无法获取建议问题：messageId和currentAssistantMessageId均为空');
+                  }
                 }
 
                 // 消息结束后，确保重置加载状态
@@ -510,6 +589,14 @@ export default function DifyChatClient(): JSX.Element {
           onCompleted: () => {
             console.log('流式响应完成，设置isLoading为false');
             setIsLoading(false);
+
+            // 确保在onCompleted时也尝试获取建议问题（防止message_end事件未正确触发的情况）
+            if (currentAssistantMessageId) {
+              console.log('流式响应完成，确保获取建议问题');
+              setTimeout(() => {
+                fetchSuggestionsWithRetry(currentAssistantMessageId, 1);
+              }, 1500);
+            }
           },
           onError: (errMsg: string) => {
             console.error('API错误:', errMsg);
@@ -715,21 +802,23 @@ export default function DifyChatClient(): JSX.Element {
       </div>
       <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-gray-100">
         {suggestedQuestions.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            <div className="w-full flex items-center text-xs text-gray-500 mb-1">
+          <div className="mb-3">
+            <div className="flex items-center text-xs text-gray-500 mb-2">
               <Lightbulb className="h-3 w-3 mr-1" />
-              <span>建议问题:</span>
+              <span>您可能想问：</span>
             </div>
-            {suggestedQuestions.map((question, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => handleSuggestedQuestionClick(question)}
-                className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors"
-              >
-                {question}
-              </button>
-            ))}
+            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pb-1">
+              {suggestedQuestions.map((question, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handleSuggestedQuestionClick(question)}
+                  className="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm"
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div className="flex gap-2 items-center">
