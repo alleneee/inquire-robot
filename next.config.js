@@ -3,7 +3,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  images: { unoptimized: true },
+  images: {
+    unoptimized: true,
+    domains: ['source.unsplash.com', 'images.unsplash.com'],
+  },
 
   // 添加内容安全策略，允许从Dify服务加载iframe内容
   async headers() {
@@ -13,7 +16,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; frame-src 'self' http://115.190.43.2 https://115.190.43.2; connect-src 'self' http://115.190.43.2 https://115.190.43.2 https://*.dify.ai; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+            value: "default-src 'self'; frame-src 'self' http://115.190.43.2 https://115.190.43.2; connect-src 'self' http://115.190.43.2 https://115.190.43.2 https://*.dify.ai; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.unsplash.com;"
           },
           {
             key: 'X-Frame-Options',

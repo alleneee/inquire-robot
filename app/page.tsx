@@ -9,6 +9,7 @@ import { Bot, Brain, ChartBar, Clock, Code2, Database, FileCheck, MessageSquare,
 import Link from "next/link";
 import { useState } from "react";
 import AIAssistantButton from "@/components/ai-assistant-button";
+import SuccessCases from "@/components/success-cases";
 
 export default function Home() {
   const { toast } = useToast();
@@ -29,7 +30,7 @@ export default function Home() {
       // 导入sendEmail服务
       const { sendEmail } = await import('@/services/email-service');
       const result = await sendEmail(formData);
-      
+
       if (!result.success) {
         throw new Error('发送失败');
       }
@@ -224,23 +225,7 @@ export default function Home() {
 
       {/* Cases Section */}
       <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-16">成功案例</h2>
-          <div className="grid md:grid-cols-2 gap-8">
-            {cases.map((case_, index) => (
-              <Card key={index} className="overflow-hidden bg-white/80 backdrop-blur-sm">
-                <div className="h-48 relative">
-                  <img src={case_.image} alt={case_.title} className="w-full h-full object-cover" />
-                </div>
-                <div className="p-6">
-                  <div className="text-sm text-muted-foreground mb-2">{case_.company}</div>
-                  <h3 className="text-xl font-semibold mb-2">{case_.title}</h3>
-                  <p className="text-muted-foreground">{case_.description}</p>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
+        <SuccessCases />
       </section>
 
       {/* Consultation Form Section */}
