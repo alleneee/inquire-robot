@@ -8,19 +8,19 @@ export async function GET(request: NextRequest) {
   try {
     // 从查询参数中获取目标URL
     const url = request.nextUrl.searchParams.get('url');
-    
+
     if (!url) {
       return NextResponse.json({ error: '缺少url参数' }, { status: 400 });
     }
-    
+
     console.log(`[代理API] 转发GET请求到: ${url}`);
-    
+
     // 转发请求
     const response = await fetch(url);
-    
+
     // 从原始响应创建新的响应
     const data = await response.text();
-    
+
     // 创建响应并保留原始响应的内容类型
     return new NextResponse(data, {
       status: response.status,
@@ -42,23 +42,23 @@ export async function POST(request: NextRequest) {
   try {
     // 从查询参数中获取目标URL
     const url = request.nextUrl.searchParams.get('url');
-    
+
     if (!url) {
       return NextResponse.json({ error: '缺少url参数' }, { status: 400 });
     }
-    
+
     console.log(`[代理API] 转发POST请求到: ${url}`);
-    
+
     // 从请求中获取body
     let body: ArrayBuffer | string | null = null;
     const contentType = request.headers.get('Content-Type') || '';
-    
+
     if (contentType.includes('application/json')) {
       body = JSON.stringify(await request.json());
     } else {
       body = await request.arrayBuffer();
     }
-    
+
     // 获取原始请求的headers
     const headers = new Headers();
     request.headers.forEach((value, key) => {
@@ -67,17 +67,17 @@ export async function POST(request: NextRequest) {
         headers.append(key, value);
       }
     });
-    
+
     // 转发请求
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body,
     });
-    
+
     // 判断响应类型
     const contentTypeResponse = response.headers.get('Content-Type') || '';
-    
+
     // 创建响应
     if (contentTypeResponse.includes('text/event-stream')) {
       // 对于流式响应，我们需要特殊处理
@@ -85,18 +85,18 @@ export async function POST(request: NextRequest) {
       const stream = new ReadableStream({
         async start(controller) {
           if (!reader) return controller.close();
-          
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             controller.enqueue(value);
           }
-          
+
           controller.close();
         },
       });
-      
+
       return new NextResponse(stream, {
         status: response.status,
         statusText: response.statusText,
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     } else {
       // 对于非流式响应
       const data = await response.text();
-      
+
       return new NextResponse(data, {
         status: response.status,
         statusText: response.statusText,

@@ -366,18 +366,26 @@ export default function DifyChatClient(): JSX.Element {
             // 增强错误信息显示
             let errorContent = '抱歉，我遇到了一些问题。';
 
+            // 根据错误类型提供更具体的信息
+            if (errMsg.includes('超时')) {
+              errorContent = '连接超时，请检查网络状况并稍后重试。';
+            } else if (errMsg.includes('连接被中断') || errMsg.includes('意外终止')) {
+              errorContent = '服务器连接被中断，可能是防火墙设置或网络不稳定导致。';
+            } else if (errMsg.includes('API连接失败')) {
+              errorContent = 'API连接失败，请确认服务器地址和配置是否正确。';
+            } else if (errMsg.includes('401')) {
+              errorContent = 'API密钥认证失败，请检查密钥配置。';
+            } else if (errMsg.includes('403')) {
+              errorContent = '访问被拒绝，请检查API权限设置。';
+            } else if (errMsg.includes('429')) {
+              errorContent = 'API请求过于频繁，请稍后再试。';
+            } else if (errMsg.includes('500')) {
+              errorContent = 'API服务器内部错误，请联系服务提供商。';
+            }
+
             // 添加具体错误信息，便于调试
             if (process.env.NODE_ENV === 'development') {
               errorContent += `\n\n错误详情: ${errMsg}`;
-
-              // 尝试诊断常见问题
-              if (errMsg.includes('Failed to fetch')) {
-                console.error('网络连接问题, 可能是CORS或网络问题');
-                errorContent += '\n\n可能是网络连接或CORS问题，请检查API地址配置';
-              } else if (errMsg.includes('401')) {
-                console.error('API密钥认证失败');
-                errorContent += '\n\nAPI密钥认证失败，请检查API密钥配置';
-              }
             } else {
               errorContent += ' 请稍后再试。';
             }

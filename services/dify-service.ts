@@ -1,4 +1,5 @@
 import { API_PREFIX } from '@/config';
+import { DEFAULT_USER } from '@/config';
 
 export interface IOnDataMoreInfo {
   conversationId?: string;
@@ -254,12 +255,13 @@ const handleStream = (
               }
             } catch (e) {
               console.error('解析JSON数据出错:', e);
+              // 即使解析错误，也尝试继续处理后续数据
             }
           }
         }
       } catch (e) {
         console.error('处理消息时出错:', e);
-        buffer = '';
+        buffer = ''; // 清空缓冲区，避免错误数据积累
       }
 
       // 继续读取下一块数据
@@ -282,6 +284,31 @@ const handleStream = (
           console.error('发送错误消息时出错:', innerError);
         }
       }
+
+      // 网络错误处理 - 通知UI错误类型
+      let errorMessage = '网络连接中断';
+      if (e instanceof Error) {
+        if (e.message.includes('网络') || e.message.includes('network')) {
+          errorMessage = '网络连接问题，请检查您的网络连接';
+        } else if (e.message.includes('超时') || e.message.includes('timeout')) {
+          errorMessage = '连接超时，请稍后重试';
+        } else if (e.message.includes('终止') || e.message.includes('aborted')) {
+          errorMessage = '连接被中断，可能是服务器或防火墙问题';
+        } else if (e.message.includes('拒绝') || e.message.includes('refused')) {
+          errorMessage = '连接被拒绝，请检查服务器配置';
+        }
+      }
+
+      // 通知UI出现了错误
+      try {
+        onData('', false, {
+          errorMessage: errorMessage,
+          isComplete: true
+        });
+      } catch (notifyError) {
+        console.error('通知UI错误时出错:', notifyError);
+      }
+
       onCompleted && onCompleted();
     });
   }
@@ -294,8 +321,8 @@ const handleStream = (
 export const sendChatMessage = async (
   params: {
     query: string;
-    inputs?: Record<string, any>;
     conversation_id?: string;
+    inputs?: Record<string, any>;
     user?: string;
   },
   callbacks: {
@@ -303,53 +330,85 @@ export const sendChatMessage = async (
     onCompleted?: IOnCompleted;
     onError?: IOnError;
   }
-) => {
-  const { onData, onCompleted, onError } = callbacks;
-  const apiKey = process.env.NEXT_PUBLIC_DIFY_API_KEY || '';
+): Promise<void> => {
+  const apiKey = process.env.NEXT_PUBLIC_DIFY_API_KEY;
   const baseUrl = process.env.NEXT_PUBLIC_DIFY_BASE_URL || '';
 
-  // 详细日志，帮助调试
-  console.log('开始调用Dify API:', {
-    baseUrl,
-    接口路径: `${baseUrl}/chat-messages`,
-    ApiKey长度: apiKey.length,
-    请求操作: '发送聊天消息'
-  });
+  if (!apiKey || !baseUrl) {
+    callbacks.onError && callbacks.onError('API密钥或基础URL未配置');
+    return;
+  }
 
   try {
-    // 在浏览器环境中，始终使用代理路由来解决跨域问题
+    // 增加超时处理
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+
+    // 构建目标URL
     const targetUrl = `${baseUrl}/chat-messages`;
-    const apiUrl = typeof window !== 'undefined' ?
-      `/api/proxy?url=${encodeURIComponent(targetUrl)}` :
-      targetUrl;
 
-    console.log('最终使用的API URL:', apiUrl, '是否使用代理:', typeof window !== 'undefined');
+    // 在浏览器环境中使用代理API路由
+    const useUrl = typeof window !== 'undefined'
+      ? `/api/proxy?url=${encodeURIComponent(targetUrl)}`
+      : targetUrl;
 
-    const response = await fetch(apiUrl, {
+    console.log('使用URL:', useUrl, '是否使用代理:', typeof window !== 'undefined');
+
+    const response = await fetch(useUrl, {
       method: 'POST',
       headers: {
         'Content-Type': ContentType.json,
         'Authorization': `Bearer ${apiKey}`,
-        'X-Requested-With': 'XMLHttpRequest' // 标记为XHR请求
+        'Accept': ContentType.stream
       },
       body: JSON.stringify({
-        ...params,
+        inputs: params.inputs || {},
+        query: params.query,
         response_mode: 'streaming',
+        conversation_id: params.conversation_id,
+        user: params.user || DEFAULT_USER,
       }),
+      signal: controller.signal
     });
 
+    // 清除超时计时器
+    clearTimeout(timeoutId);
+
+    // 处理错误状态码
     if (!response.ok) {
-      const errText = await response.text();
-      console.error('请求失败:', response.status, errText);
-      onError && onError(`请求失败 ${response.status}: ${errText}`);
-      return;
+      // 获取错误详情
+      const errorText = await response.text();
+      let errorMsg = `服务器错误: ${response.status} ${response.statusText}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMsg += ` - ${errorJson.message || errorJson.error || errorText}`;
+      } catch {
+        errorMsg += ` - ${errorText}`;
+      }
+      throw new Error(errorMsg);
     }
 
-    console.log('开始处理流式响应');
-    handleStream(response, onData, onCompleted);
-  } catch (e: any) {
-    console.error('调用API异常:', e);
-    onError && onError(e.message || '发送消息失败');
+    // 处理成功响应
+    handleStream(response, callbacks.onData, callbacks.onCompleted);
+  } catch (error) {
+    console.error('发送消息时出错:', error);
+
+    // 错误处理增强
+    let errorMsg = '连接错误';
+    if (error instanceof Error) {
+      errorMsg = error.message;
+
+      // 针对不同类型错误提供更具体的错误信息
+      if (error.name === 'AbortError') {
+        errorMsg = '请求超时，请检查网络连接或增加超时时间';
+      } else if (error.message.includes('Failed to fetch')) {
+        errorMsg = 'API连接失败，请检查网络和API配置';
+      } else if (error.message.includes('意外终止了连接')) {
+        errorMsg = '服务器连接意外中断，可能是防火墙或超时设置问题';
+      }
+    }
+
+    callbacks.onError && callbacks.onError(errorMsg);
   }
 };
 
