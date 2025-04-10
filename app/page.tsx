@@ -9,7 +9,7 @@ import { Bot, Brain, ChartBar, Clock, Code2, Database, FileCheck, MessageSquare,
 import Link from "next/link";
 import { useState } from "react";
 import AIAssistantButton from "@/components/ai-assistant-button";
-import SuccessCases from "@/components/success-cases";
+import SuccessStories from "@/components/SuccessStories";
 
 export default function Home() {
   const { toast } = useToast();
@@ -127,21 +127,6 @@ export default function Home() {
     }
   ];
 
-  const cases = [
-    {
-      company: "某头部电商平台",
-      title: "智能客服系统",
-      description: "实现7*24小时智能响应，提升客服效率300%",
-      image: "https://images.unsplash.com/photo-1553877522-43269d4ea984?w=800&auto=format&fit=crop&q=60"
-    },
-    {
-      company: "某跨境电商企业",
-      title: "数据分析平台",
-      description: "整合多平台数据，实现实时决策支持",
-      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=60"
-    }
-  ];
-
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -225,7 +210,7 @@ export default function Home() {
 
       {/* Cases Section */}
       <section className="py-20 bg-gradient-to-b from-purple-50 to-white">
-        <SuccessCases />
+        <SuccessStories />
       </section>
 
       {/* Consultation Form Section */}

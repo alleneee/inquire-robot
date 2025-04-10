@@ -8,7 +8,19 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'AI+RPA+BI 企业级解决方案 | 专注电商智能化服务',
   description: '为电商企业提供AI智能问答、RPA流程自动化、BI数据可视化等私有化定制开发服务。专业团队，快速交付，安全可靠。',
-  keywords: '电商AI开发,AI私有化定制,RPA流程自动化,BI数据看板开发,钉钉飞书Bot开发,电商业务数据接入'
+  keywords: '电商AI开发,AI私有化定制,RPA流程自动化,BI数据看板开发,钉钉飞书Bot开发,电商业务数据接入',
+  icons: {
+    icon: [
+      {
+        url: '/favicon.png',
+        href: '/favicon.png',
+      },
+    ],
+    apple: {
+      url: '/favicon.png',
+      href: '/favicon.png',
+    },
+  }
 };
 
 export default function RootLayout({
@@ -18,6 +30,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
+      <head>
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
+      </head>
       <body className={inter.className}>
         {children}
         <Toaster />
